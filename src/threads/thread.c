@@ -28,6 +28,12 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+/* ------------------------ ADDED ------------------------ */
+/* List of sleeping processes. When the TIMER SLEEP is called,
+   put the current process into this list. */
+static struct list sleeping_list;
+/* ------------------------ ADDED ------------------------ */
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -93,6 +99,11 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
 
+  /* ------------------------ ADDED ------------------------ */
+  list_init(&sleeping_list); /* Initialize the sleeping list. */
+  /* ------------------------ ADDED ------------------------ */
+
+
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -117,6 +128,27 @@ thread_start (void)
   sema_down (&idle_started);
 }
 
+/* ------------------------ ADDED ------------------------ */
+bool compareThreadsByPriority(const struct list_elem *a,
+                              const struct list_elem *b,
+                              void *aux UNUSED)
+{
+  struct thread *thread_a = list_entry(a, struct thread, elem);
+  struct thread *thread_b = list_entry(b, struct thread, elem);
+  return thread_a->priority > thread_b->priority;
+}
+
+bool compareThreadsByPrioritySleeping(const struct list_elem *a,
+                                      const struct list_elem *b,
+                                      void *aux UNUSED)
+{
+  struct thread *thread_a = list_entry(a, struct thread, elemSleep);
+  struct thread *thread_b = list_entry(b, struct thread, elemSleep);
+  return thread_a->priority > thread_b->priority;
+}
+/* ------------------------ ADDED ------------------------ */
+
+
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
@@ -137,7 +169,48 @@ thread_tick (void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
+
+  /* ------------------------ ADDED ------------------------ */
+  /* Iterate through all sleeping threads in SLEEPING LIST, decrement the
+  ticks_remain_toWakeup of each sleeping thread. If any of them have a
+  zero ticks_remain_toWakeup, wake up these threads. */
+  struct list_elem *e = list_begin(&sleeping_list);
+  struct list_elem *temp;
+
+  while (e != list_end(&sleeping_list))
+  {
+    struct thread *t = list_entry(e, struct thread, elemSleep);
+    temp = e;
+    e = list_next(e);
+
+    ASSERT(t->status == THREAD_BLOCKED);
+
+    if (t->ticks_remain_toWakeup > 0)
+    {
+      t->ticks_remain_toWakeup--;
+      if (t->ticks_remain_toWakeup <= 0)
+      {
+        thread_unblock(t);
+        list_remove(temp);
+      }
+    }
+  }
+  /* ------------------------ ADDED ------------------------ */
+
 }
+
+/* ------------------------ ADDED ------------------------ */
+void set_sleeping_threads(int64_t ticks)
+{
+  struct thread *cur = thread_current();
+  cur->ticks_remain_toWakeup = ticks;
+  enum intr_level old_level = intr_disable();
+  list_insert_ordered(&sleeping_list, &cur->elemSleep, compareThreadsByPrioritySleeping, NULL);
+  intr_set_level(old_level);
+  thread_block();
+}
+/* ------------------------ ADDED ------------------------ */
+
 
 /* Prints thread statistics. */
 void
