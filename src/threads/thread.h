@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -99,14 +100,49 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+      /* ------------------------ ADDED ------------------------ */
+      /* to manage process execution (process_execute) in process.c */
+      struct list children;               /* List of children threads. */
+      struct thread *parent;              /* Parent thread. */
+
+      struct semaphore semaChild;              /* Semaphore used to wait for the child to finish. */
+      struct semaphore semaChildSync;          /* Semaphore used to synchronize the parent and child. */
+
+      bool isChildCreationSuccess;            /* Flag to indicate if the child creation was successful. */
+
+      int exitChildStatus;                    /* Exit status of the child. */
+      tid_t waitingForChild;                  /* TID of the child that the parent is waiting for. */
+      /* ------------------------ ADDED ------------------------ */
+
+      /* ------------------------ ADDED ------------------------ */
+      /* to manage file system in syscall.c */
+      struct list fileDescriptors;            /* List of file descriptors. */
+      struct file *fileExecutable;            /* Executable file. */
+      struct list_elem elemChild;             /* List element for children list. */
+
+      int exitFileStatus;                     /* Exit status of the file. */
+      /* ------------------------ ADDED ------------------------ */
+
 #ifdef USERPROG
-    /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+      /* Owned by userprog/process.c. */
+      uint32_t *pagedir; /* Page directory. */
 #endif
 
-    /* Owned by thread.c. */
-    unsigned magic;                     /* Detects stack overflow. */
+      /* Owned by thread.c. */
+      unsigned magic; /* Detects stack overflow. */
   };
+
+
+/* ------------------------ ADDED ------------------------ */
+/* opened files list struct */
+struct fileDescriptor
+{
+    int fd;                 /* File descriptor. */
+    struct file *file;      /* File. */
+    struct list_elem elem;  /* List element. */
+};
+/* ------------------------ ADDED ------------------------ */
+
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

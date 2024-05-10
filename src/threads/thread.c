@@ -12,7 +12,6 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #ifdef USERPROG
-#include "userprog/process.h"
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -102,7 +101,6 @@ thread_init (void)
   /* ------------------------ ADDED ------------------------ */
   list_init(&sleeping_list); /* Initialize the sleeping list. */
   /* ------------------------ ADDED ------------------------ */
-
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -355,6 +353,8 @@ thread_exit (void)
 {
   ASSERT (!intr_context ());
 
+  intr_disable();
+
 #ifdef USERPROG
   process_exit ();
 #endif
@@ -362,7 +362,6 @@ thread_exit (void)
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
-  intr_disable ();
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
@@ -537,6 +536,29 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
+  /* ------------------------ ADDED ------------------------ */
+  t->ticks_remain_toWakeup = 0; /* Initialize the ticks_remain_toWakeup. */
+  t->exitChildStatus = -1;      /* Initialize the exitChildStatus. */
+  t->waitingForChild = -1;      /* Initialize the waitingForChild. */
+  t->isChildCreationSuccess = false; /* Initialize the isChildCreationSuccess. */
+  t->exitFileStatus = -1;        /* Initialize the exitFileStatus. */
+
+  list_init(&t->children); /* Initialize the children list. */
+  list_init(&t->fileDescriptors); /* Initialize the fileDescriptors list. */
+
+  sema_init(&t->semaChild, 0); /* Initialize the semaChild. */
+  sema_init(&t->semaChildSync, 0); /* Initialize the semaChildSync. */
+  if (t != initial_thread)
+  {
+    t->parent = thread_current(); /* Set the parent of the thread. */
+  }
+  else
+  {
+    t->parent = NULL; /* Set the parent of the thread. */
+  }
+  /* ------------------------ ADDED ------------------------ */
+
+  
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
