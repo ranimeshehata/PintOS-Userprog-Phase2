@@ -315,6 +315,7 @@ int read(int fd, char *buffer, unsigned size)
   if (fd == 1)
   {
     /* negative area */
+    /* stdout */
   }
   struct fileDescriptor *user_file = getFile(fd);
   if (user_file == NULL)
