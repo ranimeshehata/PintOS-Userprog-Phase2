@@ -51,6 +51,9 @@ tid_t process_execute(const char *file_name)
 
   /* ------------------------ ADDED ------------------------ */
   /* wait for the child to be created successfully */
+
+  /* After creating a new thread, the parent process waits for the child process to signal whether it was created successfully using sema_down */
+   /* Depending on the success flag isChildCreationSuccess, it returns the new thread's ID or an error. */
   sema_down(&thread_current()->semaChildSync);
   if (thread_current()->isChildCreationSuccess)
   {
@@ -103,7 +106,7 @@ start_process(void *file_name_)
     /* current child thread  */
     struct thread *child = thread_current();
 
-    /* add the child to the list of children */
+    /* add the child to the parent's list of children */
     list_push_back(children, &child->elemChild);
 
     /* set the child to true that it's created successfully */
@@ -112,7 +115,8 @@ start_process(void *file_name_)
     /* signal the parent that the child is created successfully and wake it up */
     sema_up(&parent->semaChildSync);
 
-    /* wait for the parent to execute the child or wakes it up */
+    /* wait for the parent to execute the child or wakes it up  in other words,
+    the cild waits for the parent to alllow it to proceed using sema_down */
     sema_down(&thread_current()->semaChildSync);
   }
   else
@@ -123,7 +127,7 @@ start_process(void *file_name_)
     /* signal the parent that the child is not created successfully and wake it up */
     sema_up(&parent->semaChildSync);
   }
-  
+
   /* ------------------------ ADDED ------------------------ */
 
 
@@ -177,7 +181,8 @@ int process_wait(tid_t tid)
     list_remove(&child->elemChild);
     /* wake the child up */
     sema_up(&child->semaChildSync);
-    /* let parent sleep till child wakes him up */
+    /* let parent sleep till child wakes him up,, 
+    block the parent until the child signals completion */
     sema_down(&thread_current()->semaChild);
     /* get the exit status of the child */
     return thread_current()->exitChildStatus;
@@ -186,6 +191,8 @@ int process_wait(tid_t tid)
 }
 
 /* Free the current process's resources. */
+
+// its function is to clean up resources allocated to the process, including closing files and removing page directory mappings
 void process_exit(void)
 {
   struct thread *cur = thread_current();
@@ -224,6 +231,7 @@ void process_exit(void)
   thread_current()->fileExecutable = NULL;
   thread_current()->parent = NULL;
 
+  /* frees file descriptors and signals any child processes to clean up their resources */
   struct list *process_files = &thread_current()->fileDescriptors;
   
   for(struct list_elem *e = list_begin(process_files); e != list_end(process_files);)
@@ -350,7 +358,9 @@ struct Elf32_Phdr
 static bool setup_stack(void **esp);
 
 /* ------------------------ ADDED ------------------------ */
+// handle argument pushing onto the stack
 void stackArgs(void **esp, char *file_name_args);
+
 /* ------------------------ ADDED ------------------------ */
 
 static bool validate_segment(const struct Elf32_Phdr *, struct file *);
@@ -417,7 +427,8 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
 
 
   /* ------------------------ ADDED ------------------------ */
-  /* after file was opened successfully we set the current thread/process executable to the file */
+  /* after file was opened successfully,
+     we set the current thread/process executable to the file */
   thread_current()->fileExecutable = file;
   /* ------------------------ ADDED ------------------------ */
   
@@ -706,7 +717,7 @@ void push_stack(char *file_name, void **esp, char **save_ptr)
 /* ------------------------ ADDED ------------------------ */
 /* get the child thread with the given tid */
 /* tid -> tid of child to get */
-/* return the child thread with the given tid if found */
+/* return the child thread with the given tid if found  from the current process's list of children */
 struct thread *getChildThread(tid_t tid)
 {
   /* get the list of children for the current thread/process */

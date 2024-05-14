@@ -11,10 +11,11 @@
 #include "threads/synch.h"
 #include "lib/kernel/list.h"
 
+
 static void syscall_handler(struct intr_frame *f);
 
 /* ------------------------ ADDED ------------------------ */
-/* define a lock to be used when writing to a file shared between all threads */
+/* define a lock to be used when writing to a file shared between all threads to ensure mutual exclusion */
 struct lock fileLock;
 /* ------------------------ ADDED ------------------------ */
 
@@ -24,11 +25,15 @@ void syscall_init(void)
   intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 
   /* ------------------------ ADDED ------------------------ */
-  /* initialize the lock */
+  /* initialize the lock to ensure mutual exclusion when performing file operations across multiple threads */
   lock_init(&fileLock);
   /* ------------------------ ADDED ------------------------ */
 }
 
+// This function handles system calls by dispatching them to the appropriate handler functions based on the system call number
+// Retrieves the system call number from the stack pointer (f->esp)
+// Uses a switch statement to call the appropriate handler function based on the system call number.
+// If the system call number is invalid, it calls exit(-1)
 static void
 syscall_handler(struct intr_frame *f)
 {
@@ -41,9 +46,14 @@ syscall_handler(struct intr_frame *f)
   }
 
   /* get the system call number */
-  /* call the function that maps to the number*/
+  /* call the function that maps to the number */
+  /* the system call number is extracted from the stack pointer (esp), 
+  and a corresponding handler function is called based on the system call number */
   switch (*(int *)f->esp)
   {
+    /* Each function performs necessary validation and invokes corresponding file system operations
+     while holding the fileLock to ensure thread safety */
+
   case SYS_HALT:
     halt();
     break;
@@ -105,13 +115,19 @@ syscall_handler(struct intr_frame *f)
 }
 
 /* halt or shutdown system */
+// Calls shutdown_power_off() to power off the machine
 void halt(void)
 {
   printf("(halt) begin\n");
   shutdown_power_off();
 }
 
+
 /* exit the current thread */
+// Handles the SYS_EXIT system call to terminate the current process
+// Retrieves the exit status from the stack pointer (f->esp)
+// Validates the status using is_user_vaddr(status)
+// Sets the exit status in the register f->eax and calls exit(status) to terminate the process
 void exit_handler(struct intr_frame *f)
 {
   int status = *((int *)f->esp + 1);
@@ -126,6 +142,10 @@ void exit_handler(struct intr_frame *f)
 
 
 /* exit the current thread */
+// Terminates the current thread with the specified exit status
+// Retrieves the current thread's name and prepares the exit message
+// Sets the thread's exit status
+// Prints the exit message and calls thread_exit() to terminate the thread
 void exit(int status)
 {
   char *name = thread_current()->name;
@@ -137,14 +157,25 @@ void exit(int status)
 }
 
 
+
 /* execute a new process */
+// Handles the SYS_EXEC system call to execute a new process
+// Retrieves the file name from the stack pointer (f->esp)
+// Calls process_execute(file_name) to create a new process and stores the result in f->eax
 void exec_handler(struct intr_frame *f)
 {
   char *file_name = (char *)(*((int *)f->esp + 1));
   f->eax = process_execute(file_name);
 }
 
+
+
 /* wait for a child process to finish */
+// Handles the SYS_WAIT system call to wait for a child process to finish
+// Validates the argument using isValid()
+// The thread id (tid) of the child process is retrieved from the stack
+// Calls wait(tid) to wait for the child process to finish and stores the result in f->eax
+// f->eax is the register used to store the return value of the system call
 void wait_handler(struct intr_frame *f)
 {
   if (!isValid((int *)f->esp + 1))
@@ -153,13 +184,20 @@ void wait_handler(struct intr_frame *f)
   f->eax = wait(tid);
 }
 
+
 /* wait for the child process/thread with that tid */
 tid_t wait(tid_t tid)
 {
   return process_wait(tid);
 }
 
+
+
 /* create a new file */
+// Handles the SYS_CREATE system call to create a new file
+// Retrieves the file name and initial size from the stack pointer (f->esp)
+// validate the file name using isValid()
+// Calls create(file_name, initial_size) to create the file and stores the result in f->eax
 void create_handler(struct intr_frame *f)
 {
   char *file_name = (char *)(*((int *)f->esp + 1));
@@ -171,6 +209,12 @@ void create_handler(struct intr_frame *f)
   f->eax = create(file_name, initial_size);
 }
 
+
+
+// create a new file with the specified name and initial size
+// Acquires the fileLock to ensure mutual exclusion when creating the file
+// Calls filesys_create(file_name, initial_size) to create the file
+// Releases the fileLock after creating the file and returns the result
 int create(char *file_name, int initial_size)
 {
   int result = 0;
@@ -182,6 +226,10 @@ int create(char *file_name, int initial_size)
 
 /* remove a file */
 /* Check the pointer to file , if it is valid , then call remove function */
+// Handles the SYS_REMOVE system call to remove a file
+// Retrieves the file name from the stack pointer (f->esp)
+// validate the file name using isValid()
+// Calls remove(file_name) to remove the file and stores the result in f->eax
 void remove_handler(struct intr_frame *f)
 {
   char *file_name = (char *)(*((int *)f->esp + 1));
@@ -192,7 +240,12 @@ void remove_handler(struct intr_frame *f)
   f->eax = remove(file_name);
 }
 
-/* remove a file */
+
+
+/* remove a file with the specified name */
+// Acquires the fileLock to ensure mutual exclusion when removing the file
+// Calls filesys_remove(file_name) to remove the file
+// Releases the fileLock after removing the file and returns the result
 int remove(char *file_name)
 {
   int result = -1;
@@ -202,8 +255,14 @@ int remove(char *file_name)
   return result;
 }
 
+
+
 /* open a file */
 /* Check the pointer to file , if it is valid , then call open function */
+// Handles the SYS_OPEN system call to open a file
+// Retrieves the file name from the stack pointer (f->esp)
+// validate the file name using isValid()
+// Calls open(file_name) to open the file and stores the result in f->eax
 void open_handler(struct intr_frame *f)
 {
   char *file_name = (char *)(*((int *)f->esp + 1));
@@ -214,7 +273,14 @@ void open_handler(struct intr_frame *f)
   f->eax = open(file_name);
 }
 
-/* open file with its name and return its fd */
+
+/* open file with its name and return its fd (a file descriptor) */
+// Acquires the fileLock to ensure mutual exclusion when opening the file
+// Calls filesys_open(file_name) to open the file
+// release the fileLock after opening the file and returns the file descriptor
+// If the file is not opened, returns -1
+// if the file is opened, it creates a file descriptor structue, assigns it a unique file descriptor 
+// and adds it to the current thread's fileDescriptors list
 int open(char *name)
 {
   static unsigned long curr_fd = 2;
@@ -244,7 +310,16 @@ int open(char *name)
   }
 }
 
+
+
+
 /* get the size of the file by taking its fd */
+// Handles the SYS_FILESIZE system call to get the size of a file
+// Retrieves the file descriptor (fd) from the stack pointer (f->esp)
+// Calls getFile(fd) to get the fileDescriptor structure
+// If the file is not found, sets f->eax to - 1 and exits
+// If the file is found, acquires the fileLock, calls file_length(file->file) to get the file size, and releases the fileLock
+// Stores the file size in f -> eax 
 void countSize(struct intr_frame *f)
 {
   int fd = (int)(*((int *)f->esp + 1));
@@ -262,7 +337,12 @@ void countSize(struct intr_frame *f)
   }
 }
 
+
+
 /* get the file by its fd if it gets opened by current thread */
+// Retrieves the file descriptor (file users) structure for a given file descriptor
+// Iterates through the current thread's fileDescriptors list to find the file descriptor with the specified file descriptor (fd)
+// Returns the file descriptor structure if found, otherwise returns NULL
 struct fileDescriptor *getFile(int fd)
 {
   struct fileDescriptor *ans = NULL;
@@ -278,10 +358,16 @@ struct fileDescriptor *getFile(int fd)
   return NULL;
 }
 
+
+
 /* read from a file */
 /* check on fd and buffer,
 if they're valid, then call read function ..
 if not, then exit */
+// Handles the SYS_READ system call to read from a file
+// Retrieves the file descriptor (fd), buffer, and size from the stack pointer (f->esp)
+// Validates the buffer using isValid() and checks if fd is 1 (stdout)
+// Calls read(fd, buffer, size) to read from the file and stores the result in f->eax
 void read_handler(struct intr_frame *f)
 {
   int fd = (int)(*((int *)f->esp + 1));
@@ -295,7 +381,16 @@ void read_handler(struct intr_frame *f)
   f->eax = read(fd, buffer, size);
 }
 
+
+
 /* read from a file */
+// Reads data from a file or stdin
+// If fd is 0 (stdin), reads characters using input_getc() and stores them in the buffer
+// If fd is 1 (stdout), does nothing (invalid case for reading)
+// calls getFile(fd) to get the fileDescriptor structure
+// If the file is not found, returns -1
+// If the file is found, acquires the fileLock, calls file_read(file, buffer, size) to read from the file, and releases the fileLock
+// Returns the number of bytes read
 int read(int fd, char *buffer, unsigned size)
 {
   int result = size;
@@ -332,10 +427,16 @@ int read(int fd, char *buffer, unsigned size)
   }
 }
 
+
+
 /* write to a file */
 /* check on fd and buffer,
 if they're valid, then call write function ..
 if not, then exit */
+// Handles the SYS_WRITE system call to write to a file
+// Retrieves the file descriptor (fd), buffer, and size from the stack pointer (f->esp)
+// Validates the buffer using isValid() and checks if fd is 0 (stdin)
+// Calls write(fd, buffer, size) to write to the file and stores the result in f->eax
 void write_handler(struct intr_frame *f)
 {
   int fd = *((int *)f->esp + 1);
@@ -348,7 +449,16 @@ void write_handler(struct intr_frame *f)
   f->eax = write(fd, buffer, size);
 }
 
+
+
 /* write to a file */
+// Writes data to a file or stdout
+// If fd is 0 (stdin), does nothing (invalid case for writing)
+// If fd is 1 (stdout), acquires the fileLock, writes characters using putbuf(buffer, size)
+// releases the fileLock, and returns the size
+// if the file is not found, returns -1
+// If the file is found, acquires the fileLock, calls file_write(file, buffer, size) to write to the file, and releases the fileLock
+// Returns the number of bytes written
 int write(int fd, char *buffer, unsigned size)
 {
   if (fd == 0)
@@ -380,8 +490,14 @@ int write(int fd, char *buffer, unsigned size)
   }
 }
 
+
+
 /* close a file */
-void close_handler(struct intr_frame *f)
+// Handles the SYS_CLOSE system call to close a file
+// Retrieves the file descriptor (fd) from the stack pointer (f->esp)
+// Ensures the file descriptor is not stdin or stdout (fd < 2) 
+// Calls close(fd) to close the file and stores the result in f->eax
+void close_handler(struct intr_frame * f)
 {
   int fd = (int)(*((int *)f->esp + 1));
   /* if target is stdin (fd == 0) or stdout (fd == 1) */
@@ -392,9 +508,14 @@ void close_handler(struct intr_frame *f)
   f->eax = close(fd);
 }
 
-/* close a file */
+
+
+/* close a file with the specified file descriptor */
 /* Take the fd for target file and close it if it exist to current process ..
 otherwise return -1*/
+// If the file is not found, returns -1
+// If the file is found, acquires the fileLock, calls file_close(file->file) to close the file, and releases the fileLock
+// Removes the file descriptor from the current thread's fileDescriptors list and returns 1
 int close(int fd)
 {
   struct fileDescriptor *file = getFile(fd);
@@ -412,7 +533,15 @@ int close(int fd)
   }
 }
 
+
+
 /* change the position of file to be read or written */
+// Handles the SYS_SEEK system call to change the file position to be read or written
+// Retrieves the file descriptor (fd) and position from the stack pointer (f->esp)
+// Calls getFile(fd) to get the fileDescriptor structure
+// If the file is not found, sets f->eax to -1
+// If the file is found, acquires the fileLock, calls file_seek(file->file, position) to change the file position, and releases the fileLock
+// Stores the position in f->eax
 void seek(struct intr_frame *f)
 {
   /* take fd and position where the file to be written */
@@ -432,7 +561,15 @@ void seek(struct intr_frame *f)
   }
 }
 
+
+
 /* get the position of file to be read or written */
+// Handles the SYS_TELL system call to get the position of the file to be read or written
+// Retrieves the file descriptor (fd) from the stack pointer (f->esp)
+// Calls getFile(fd) to get the fileDescriptor structure
+// If the file is not found, sets f->eax to -1
+// If the file is found, acquires the fileLock, calls file_tell(file->file) to get the file position, and releases the fileLock
+// Stores the file position in f->eax
 void tell(struct intr_frame *f)
 {
   /* take fd and return position where to be read or written */
@@ -450,13 +587,18 @@ void tell(struct intr_frame *f)
   }
 }
 
-/* check if the pointer is valid */
+
+
+/* check if the given pointer is valid */
 bool isValid(void *name)
 {
   return name != NULL && is_user_vaddr(name) && pagedir_get_page(thread_current()->pagedir, name) != NULL;
 }
 
+
+
 /* check if the stack pointer is valid */
+// Returns f != NULL && is_user_vaddr(f->esp) to ensure the stack pointer is not NULL and within user address space
 bool isValid_esp(struct intr_frame *f)
 {
   return isValid((int *)f->esp) || ((*(int *)f->esp) < 0) || (*(int *)f->esp) > 12;
