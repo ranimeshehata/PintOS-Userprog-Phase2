@@ -537,6 +537,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   /* ------------------------ ADDED ------------------------ */
+
   t->ticks_remain_toWakeup = 0; /* Initialize the ticks_remain_toWakeup. */
   t->exitChildStatus = -1;      /* Initialize the exitChildStatus. */
   t->waitingForChild = -1;      /* Initialize the waitingForChild. */
@@ -556,6 +557,7 @@ init_thread (struct thread *t, const char *name, int priority)
   {
     t->parent = NULL; /* Set the parent of the thread. */
   }
+  
   /* ------------------------ ADDED ------------------------ */
 
   
@@ -671,7 +673,7 @@ allocate_tid (void)
   tid = next_tid++;
   lock_release (&tid_lock);
 
-  return tid;
+  return tid; 
 }
 
 /* Offset of `stack' member within `struct thread'.

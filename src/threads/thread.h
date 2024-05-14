@@ -180,6 +180,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+
 /* ------------------------ ADDED ------------------------ */
 void set_sleeping_threads(int64_t);
 bool compareThreadsByPriority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);

@@ -10,7 +10,7 @@ void process_activate (void);
 
 /* ------------------------ ADDED ------------------------ */
 
-// push arguments to stack
+/* push the command line arguments onto the stack */
 void push_stack(char *file_name, void **esp, char **save_ptr);
 
 struct thread *getChildThread(tid_t tid);

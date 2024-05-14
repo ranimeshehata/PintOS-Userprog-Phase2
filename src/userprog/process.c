@@ -27,16 +27,15 @@ static bool load(const char *cmdline, void (**eip)(void), void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 
-
-   // starts a new thread running a user program loaded from the specified file name
-   // creates a copy of the file name to avoid race conditions
-    // creates a new thread to execute the file name using thread_create
-    // on failure, frees the allocated memory and returns TID_ERROR
+// starts a new thread running a user program loaded from the specified file name
+// creates a copy of the file name to avoid race conditions
+// creates a new thread to execute the file name using thread_create
+// on failure, frees the allocated memory and returns TID_ERROR
 tid_t process_execute(const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
-
+  /* Allocates a page for the file name using palloc_get_page */
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page(0);
@@ -45,40 +44,42 @@ tid_t process_execute(const char *file_name)
   strlcpy(fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+  // create child thread that runs function start_process with the file name as an argument
+  // which means from this point we will have parent thread and child thread
+// CHILD AND PARENT COMMUNICATION IS CREATED HERE
+  tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);  // it creates child as thread* t
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
 
   /* ------------------------ ADDED ------------------------ */
-  /* wait for the child to be created successfully */
+  /* wait for the child to be created successfully here and return pid if success */
 
   /* After creating a new thread, the parent process waits for the child process to signal whether it was created successfully using sema_down */
-   /* Depending on the success flag isChildCreationSuccess, it returns the new thread's ID or an error. */
+  /* Depending on the success flag isChildCreationSuccess, it returns the new thread's ID or an error. */
   sema_down(&thread_current()->semaChildSync);
   if (thread_current()->isChildCreationSuccess)
   {
-return tid;
+    return tid;
   }
   else
   {
-return TID_ERROR;
+    return TID_ERROR;
   }
   /* ------------------------ ADDED ------------------------ */
-
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 
+// initializes the interrupt frame and loads the executable
+// parse the file name and then use load to load the executable 
+// loads the executable file name and sets the success flag to true
+// if the load is successful, adds the child to the list of children
+// if the load is successful, signals the parent that the child is created successfully and wakes it up
+// if the load is not successful, signals the parent that the child is not created successfully and wakes it up
+// if loading fails, frees the allocated memory and exits the thread
+// if loading succeeds, sets up the user process stack and starts the process by simulating a return from an interrupt
 
-   // initializes the interrupt frame and loads the executable
-    // loads the executable file name and sets the success flag to true
-    // if the load is successful, adds the child to the list of children
-    // if the load is successful, signals the parent that the child is created successfully and wakes it up
-    // if the load is not successful, signals the parent that the child is not created successfully and wakes it up
-    // if loading fails, frees the allocated memory and exits the thread
-    // if loading succeeds, sets up the user process stack and starts the process by simulating a return from an interrupt
-    
 static void
 start_process(void *file_name_)
 {
@@ -86,20 +87,23 @@ start_process(void *file_name_)
   struct intr_frame if_;
   bool success;
 
-  /* Initialize interrupt frame and load executable. */
+  /* Initialize interrupt frame and load executable */
   memset(&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+  // calls load to load the executable file name into memory and sets the success flag to true
   success = load(file_name, &if_.eip, &if_.esp);
-
 
   /* ------------------------ ADDED ------------------------ */
 
   /* parent thread/process */
   struct thread *parent = thread_current()->parent;
+  // use the communication link to return the success of creation to parent, insert child into parent list, push arguments into stack, then wake up the parent and block the child
   if (success)
   {
+    // If successful, the child process is added to the parent's list of children
+    // Signals the parent that the child was created successfully and waits for the parent to proceed
     /* the list of children for the current parent thread/process */
     struct list *children = &parent->children;
 
@@ -121,6 +125,7 @@ start_process(void *file_name_)
   }
   else
   {
+    // If loading fails, signals the parent of the failure and exits the thread
     /* set the child to false that it's not created successfully */
     parent->isChildCreationSuccess = 0;
 
@@ -129,7 +134,6 @@ start_process(void *file_name_)
   }
 
   /* ------------------------ ADDED ------------------------ */
-
 
   /* If load failed, quit. */
   palloc_free_page(file_name);
@@ -155,7 +159,7 @@ start_process(void *file_name_)
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int process_wait(tid_t tid)
+int process_wait(tid_t tid) // This function waits for a child thread to die and returns its exit status
 {
   /* ------------------------ ADDED ------------------------ */
   // while (true)
@@ -176,12 +180,15 @@ int process_wait(tid_t tid)
   }
 
   /* if child_tid is valid and child exists*/
+  // Removes the child from the list of children.
+  // Wakes the child up and blocks the parent until the child signals completion
+  // Returns the exit status of the child 
   else
   {
     list_remove(&child->elemChild);
     /* wake the child up */
     sema_up(&child->semaChildSync);
-    /* let parent sleep till child wakes him up,, 
+    /* let parent sleep till child wakes him up,,
     block the parent until the child signals completion */
     sema_down(&thread_current()->semaChild);
     /* get the exit status of the child */
@@ -204,20 +211,20 @@ void process_exit(void)
     /* get its parent thread */
     struct thread *parent = cur->parent;
 
-    /* check if the parent is waiting for the child, 
-    if so, then set all parent attributes to 0 or -1 (reset them all as first initiallaized) 
-    and set exitChildStatus to the current thread's exitFileStatus 
+    /* check if the parent is waiting for the child,
+    if so, then set all parent attributes to 0 or -1 (reset them all as first initiallaized)
+    and set exitChildStatus to the current thread's exitFileStatus
     and wake the parent up */
 
     if (parent->waitingForChild == cur->tid)
     {
       /* set the exit status of the child */
       parent->exitChildStatus = thread_current()->exitFileStatus;
-      
+
       /* reset the parent attributes */
       /* no thread/child to wait for */
       parent->waitingForChild = -1;
-      
+
       /* child is not created */
       parent->isChildCreationSuccess = false;
 
@@ -226,15 +233,15 @@ void process_exit(void)
     }
   }
 
-  /* close the executable file and release its resources */
+  /* close the executable file and release its resources and reset all pointers */
   file_close(thread_current()->fileExecutable);
   thread_current()->fileExecutable = NULL;
   thread_current()->parent = NULL;
 
   /* frees file descriptors and signals any child processes to clean up their resources */
   struct list *process_files = &thread_current()->fileDescriptors;
-  
-  for(struct list_elem *e = list_begin(process_files); e != list_end(process_files);)
+
+  for (struct list_elem *e = list_begin(process_files); e != list_end(process_files);)
   {
     struct fileDescriptor *file = list_entry(e, struct fileDescriptor, elem);
     e = list_next(e);
@@ -243,7 +250,7 @@ void process_exit(void)
     free(file);
   }
 
-/* remove all children from children list and wake them up */
+  /* remove all children from children list and wake them up */
   struct list *children = &thread_current()->children;
   struct list_elem *e = list_begin(children);
   while (e != list_end(children))
@@ -255,7 +262,6 @@ void process_exit(void)
     list_remove(&child->elemChild);
   }
   /* ------------------------ ADDED ------------------------ */
-
 
   uint32_t *pd;
 
@@ -373,7 +379,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 
-   // to load a user process from an executable file
+// to load a user process from an executable file
 bool load(const char *file_name, void (**eip)(void), void **esp)
 {
   struct thread *t = thread_current();
@@ -393,7 +399,6 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
   /* strtok_r is used to get the file name without the arguments passed to it
   and strtok is not used because it's not implemented in pintOS */
 
-  
   char *fnCopy;
   char *savePtr;
 
@@ -425,13 +430,13 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
     goto done;
   }
 
-
   /* ------------------------ ADDED ------------------------ */
+
   /* after file was opened successfully,
      we set the current thread/process executable to the file */
   thread_current()->fileExecutable = file;
+
   /* ------------------------ ADDED ------------------------ */
-  
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
@@ -496,11 +501,10 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
     goto done;
 
   /* ------------------------ ADDED ------------------------ */
-  /* push the arguments to the stack */
+  /* push the command line arguments onto the stack */
   push_stack(fnCopy, esp, &savePtr);
   free(fnCopy);
   /* ------------------------ ADDED ------------------------ */
-
 
   /* Start address. */
   *eip = (void (*)(void))ehdr.e_entry;
@@ -511,13 +515,14 @@ done:
   /* We arrive here whether the load is successful or not. */
 
   /* ------------------------ ADDED ------------------------ */
-  /* iin case of file loaded successfully */
+  /* iin case of file loaded successfully, 
+    deny file write to prevent modifications while the process is running */
   if (success)
   {
     file_deny_write(file);
   }
   /* ------------------------ ADDED ------------------------ */
-  //file_close(file);
+  // file_close(file);
   return success;
 }
 
@@ -649,12 +654,11 @@ setup_stack(void **esp)
   return success;
 }
 
-
 /* ------------------------ ADDED ------------------------ */
 /* push the arguments to the stack */
 /* file_name  The file name */
 /* esp  The stack pointer */
-/* save_ptr  The save pointer */ 
+/* save_ptr  The save pointer */
 
 void push_stack(char *file_name, void **esp, char **save_ptr)
 {
@@ -711,8 +715,6 @@ void push_stack(char *file_name, void **esp, char **save_ptr)
 }
 
 /* ------------------------ ADDED ------------------------ */
-
-
 
 /* ------------------------ ADDED ------------------------ */
 /* get the child thread with the given tid */
