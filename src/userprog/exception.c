@@ -6,9 +6,9 @@
 #include "threads/thread.h"
 
 /* ------------------------ ADDED ------------------------ */
+// It provides the exit function, which is used to terminate processes
 #include "userprog/syscall.h"
 /* ------------------------ ADDED ------------------------ */
-
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -154,7 +154,7 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   /* ------------------------ ADDED ------------------------ */
-  /* exit process with error status */
+  /* exit process with error status */ 
   exit(-1);
   /* ------------------------ ADDED ------------------------ */
 
