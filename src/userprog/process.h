@@ -9,7 +9,10 @@ void process_exit (void);
 void process_activate (void);
 
 /* ------------------------ ADDED ------------------------ */
+
+// push arguments to stack
 void push_stack(char *file_name, void **esp, char **save_ptr);
+
 struct thread *getChildThread(tid_t tid);
 /* ------------------------ ADDED ------------------------ */
 

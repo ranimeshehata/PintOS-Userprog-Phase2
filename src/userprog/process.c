@@ -26,6 +26,12 @@ static bool load(const char *cmdline, void (**eip)(void), void **esp);
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
+
+
+   // starts a new thread running a user program loaded from the specified file name
+   // creates a copy of the file name to avoid race conditions
+    // creates a new thread to execute the file name using thread_create
+    // on failure, frees the allocated memory and returns TID_ERROR
 tid_t process_execute(const char *file_name)
 {
   char *fn_copy;
@@ -44,6 +50,7 @@ tid_t process_execute(const char *file_name)
     palloc_free_page(fn_copy);
 
   /* ------------------------ ADDED ------------------------ */
+  /* wait for the child to be created successfully */
   sema_down(&thread_current()->semaChildSync);
   if (thread_current()->isChildCreationSuccess)
   {
@@ -59,6 +66,16 @@ return TID_ERROR;
 
 /* A thread function that loads a user process and starts it
    running. */
+
+
+   // initializes the interrupt frame and loads the executable
+    // loads the executable file name and sets the success flag to true
+    // if the load is successful, adds the child to the list of children
+    // if the load is successful, signals the parent that the child is created successfully and wakes it up
+    // if the load is not successful, signals the parent that the child is not created successfully and wakes it up
+    // if loading fails, frees the allocated memory and exits the thread
+    // if loading succeeds, sets up the user process stack and starts the process by simulating a return from an interrupt
+    
 static void
 start_process(void *file_name_)
 {
@@ -75,6 +92,7 @@ start_process(void *file_name_)
 
 
   /* ------------------------ ADDED ------------------------ */
+
   /* parent thread/process */
   struct thread *parent = thread_current()->parent;
   if (success)
@@ -105,6 +123,7 @@ start_process(void *file_name_)
     /* signal the parent that the child is not created successfully and wake it up */
     sema_up(&parent->semaChildSync);
   }
+  
   /* ------------------------ ADDED ------------------------ */
 
 
@@ -343,6 +362,8 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
+
+   // to load a user process from an executable file
 bool load(const char *file_name, void (**eip)(void), void **esp)
 {
   struct thread *t = thread_current();
